@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import { Queue } from 'bullmq';
 import { QdrantVectorStore } from '@langchain/qdrant';
-import { GoogleGenerativeAIEmbeddings } from '@langchain/community/embeddings/googlegenerativeai';
+import { GoogleGenerativeAIEmbeddings } from '@langchain/google-genai';
 import { GoogleGenerativeAI } from '@google/generative-ai'; 
 import dotenv from 'dotenv';
 
