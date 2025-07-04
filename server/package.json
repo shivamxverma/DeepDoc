@@ -9,7 +9,14 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@langchain/community": "^0.3.48",
+    "@langchain/openai": "^0.5.17",
     "@types/node": "^24.0.10",
-    "express": "^5.1.0"
+    "bullmq": "^5.56.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.1",
+    "express": "^5.1.0",
+    "multer": "^2.0.1"
   }
 }
