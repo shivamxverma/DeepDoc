@@ -62,6 +62,7 @@ export default function UploadPDF() {
     try {
       setUploading(true);
       const response = await uploadPDF(selectedFile);
+      console.log("Response from uploadPDF:", response);
       if (response.error) {
         throw new Error(response.error);
       }

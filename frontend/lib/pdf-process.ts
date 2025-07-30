@@ -36,7 +36,7 @@ export async function uploadPDF(pdf: File | null) {
     const blob = await put(pdf.name, buffer, { access: "public" });
 
     let chat_id: any[] = [];
-console.log("blob" , blob);
+    console.log("blob" , blob);   
     if (extractedText) {
       try {
         console.log("Processing file:", pdf.name);
