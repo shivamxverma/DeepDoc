@@ -37,6 +37,8 @@ export async function getMatchesFromEmbeddings(
   }
 }
 
+// This function retrieves context based on a query and file key
+
 export async function getContext(
   query: string,
   fileKey: string
