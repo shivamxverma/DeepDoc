@@ -1,122 +1,121 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Pinecone, PineconeRecord } from "@pinecone-database/pinecone";
+import { Pinecone } from "@pinecone-database/pinecone";
 import dotenv from 'dotenv';
 import md5 from 'md5';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-
 dotenv.config();
 
-export const getPineconeClient = () => {
-    return new Pinecone({
-      apiKey: process.env.PINECONE_API_KEY!,
-    });
-  };
+/** 
+ * A “raw” chunk coming out of the splitter:
+ * metadata may be anything JSON‐serializable.
+ */
+interface RawDoc {
+  pageContent: string;
+  metadata: Record<string, unknown>;
+}
 
-const googleai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string).getGenerativeModel({
-  model: "text-embedding-004",
-});
+/** 
+ * What Pinecone wants:
+ *  - id
+ *  - values
+ *  - metadata only of primitive or string[] types
+ */
+interface PineconeVector {
+  id: string;
+  values: number[];
+  metadata: Record<string, string | number | boolean | string[]>;
+}
 
-export async function processTextIntoPinecone(text: string, fileKey: string) {
+export const getPineconeClient = () =>
+  new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+
+const googleai = new GoogleGenerativeAI(
+  process.env.GEMINI_API_KEY!
+).getGenerativeModel({ model: "text-embedding-004" });
+
+export async function processTextIntoPinecone(
+  text: string,
+  fileKey: string
+): Promise<string> {
   console.log("Splitting text into smaller chunks...");
-  const documents = await splitTextIntoChunks(text);
+  const docs = await splitTextIntoChunks(text);
 
   console.log("Generating embeddings...");
-  const vectors = await generateEmbeddings(documents);
+  const vectors = await generateEmbeddings(docs);
 
   console.log("Uploading embeddings to Pinecone...");
   await uploadToPinecone(vectors, fileKey);
 
-  return documents[0];
+  // return the first chunk’s content (you can adjust)
+  return docs[0].pageContent;
 }
 
-// Splits large text into smaller overlapping chunks
-async function splitTextIntoChunks(text: string) {
+async function splitTextIntoChunks(text: string): Promise<RawDoc[]> {
   const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 200, // Adjust chunk size based on Gemini limits
-    chunkOverlap: 50, // Ensures context is preserved
+    chunkSize: 200,
+    chunkOverlap: 50,
   });
 
-  const docs = await splitter.splitDocuments([
+  return splitter.splitDocuments([
     {
       pageContent: text,
-      metadata: {
-        text: truncateStringByBytes(text, 36000),
-      },
+      metadata: { text: truncateStringByBytes(text, 36000) },
     },
   ]);
-
-  return docs;
 }
 
-// Generates embeddings using Gemini
-async function generateEmbeddings(docs: { pageContent: string; metadata: any }[]) {
-  try {
-    return await Promise.all(
-      docs.map(async (doc) => ({
-        id: md5(doc.pageContent),
-        values: await generateEmbedding(doc.pageContent),
-        metadata: doc.metadata,
-      }))
-    );
-  } catch (error) {
-    console.error("Error generating embeddings batch:", error);
-    throw error;
-  }
+async function generateEmbeddings(
+  docs: RawDoc[]
+): Promise<PineconeVector[]> {
+  return Promise.all(
+    docs.map(async (doc) => ({
+      id: md5(doc.pageContent),
+      values: await generateEmbedding(doc.pageContent),
+      metadata: sanitizeMetadata(doc.metadata),
+    }))
+  );
 }
 
-// Calls Google Gemini to generate embeddings
 export async function generateEmbedding(text: string): Promise<number[]> {
-  try {
-    const result = await googleai.embedContent(text);
-    return result.embedding.values;
-  } catch (error) {
-    console.error("Error generating embedding:", error);
-    throw error;
-  }
+  const result = await googleai.embedContent(text);
+  return result.embedding.values;
 }
 
-// Uploads embeddings to Pinecone
-async function uploadToPinecone(vectors: any[], fileKey: string) {
-    const client = await getPineconeClient();
-    const pineconeIndex = await client.index("chatpdf");
-    const namespace = pineconeIndex.namespace(fileKey);
-  
-    console.log("Inserting vectors into Pinecone...");
-  
-    // Ensure metadata values are valid
-    const sanitizedVectors = vectors.map(vector => ({
-      id: vector.id,
-      values: vector.values,
-      metadata: sanitizeMetadata(vector.metadata),
-    }));
-  
-    await namespace.upsert(sanitizedVectors);
-  }
-  
-  // Helper function to sanitize metadata
-  function sanitizeMetadata(metadata: Record<string, any>) {
-    const sanitized: Record<string, string | number | boolean | string[]> = {};
-    
-    for (const key in metadata) {
-      if (
-        typeof metadata[key] === "string" ||
-        typeof metadata[key] === "number" ||
-        typeof metadata[key] === "boolean"
-      ) {
-        sanitized[key] = metadata[key]; // Keep valid values
-      } else if (Array.isArray(metadata[key]) && metadata[key].every(v => typeof v === "string")) {
-        sanitized[key] = metadata[key]; // Keep list of strings
-      } else {
-        sanitized[key] = JSON.stringify(metadata[key]); // Convert objects/arrays to strings
-      }
-    }
-    
-    return sanitized;
-  }
-  
+async function uploadToPinecone(
+  vectors: PineconeVector[],
+  fileKey: string
+) {
+  const client = getPineconeClient();
+  const pineconeIndex = await client.index("chatpdf");
+  const namespace = pineconeIndex.namespace(fileKey);
+  console.log("Inserting vectors into Pinecone...");
+  await namespace.upsert(vectors);
+}
 
-// Ensures text does not exceed byte limit
-export const truncateStringByBytes = (str: string, bytes: number) => {
+function sanitizeMetadata(
+  metadata: Record<string, unknown>
+): PineconeVector["metadata"] {
+  const out: PineconeVector["metadata"] = {};
+
+  for (const [k, v] of Object.entries(metadata)) {
+    if (
+      typeof v === "string" ||
+      typeof v === "number" ||
+      typeof v === "boolean"
+    ) {
+      out[k] = v;
+    } else if (Array.isArray(v) && v.every((x) => typeof x === "string")) {
+      out[k] = v;
+    } else {
+      out[k] = JSON.stringify(v);
+    }
+  }
+
+  return out;
+}
+
+export const truncateStringByBytes = (str: string, bytes: number): string => {
   const enc = new TextEncoder();
-  return new TextDecoder("utf-8").decode(enc.encode(str).slice(0, bytes));
+  const dec = new TextDecoder("utf-8");
+  return dec.decode(enc.encode(str).slice(0, bytes));
 };
