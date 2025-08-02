@@ -63,7 +63,7 @@ export default function UploadPDF() {
       setUploading(true);
       const response = await uploadPDF(selectedFile);
       console.log("Response from uploadPDF:", response);
-      if (response.error) {
+      if ("error" in response) {
         throw new Error(response.error);
       }
 
@@ -72,10 +72,10 @@ export default function UploadPDF() {
       setFileName(null);
       setError(null);
       toast.success("File uploaded successfully");
-      const id = response.chat_id
+      const id = response.chatId;
       // console.log("id[0] is here " , id[0]);
       // console.log("id only : " ,[id] ) 
-      setId(id[0]);
+      setId(id ? id.toString() : null);
       if (id) {
           router.push(`/chat/${id}`);
       }
