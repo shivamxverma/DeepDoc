@@ -32,7 +32,7 @@ export async function uploadPDF(pdf: File | null) {
 
     const blob = await put(pdf.name, buffer, {
       access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      // token: process.env.BLOB_READ_WRITE_TOKEN,
     });
 
     let chat_id: any[] = [];

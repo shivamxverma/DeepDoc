@@ -152,7 +152,4 @@ export default function UploadPDF() {
       )}
     </div>
   );
-  
-
-  
 }
