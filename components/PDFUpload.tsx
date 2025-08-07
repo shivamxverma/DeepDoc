@@ -3,8 +3,8 @@
 import { useState, useRef } from "react";
 import { Button } from "./ui/button";
 import toast from "react-hot-toast";
-import { uploadPDF } from "@/lib/pdf-process";
-import { processTextIntoPinecone } from "@/lib/pinecone";
+import { uploadPDF } from "../lib/pdf-process";
+import { processTextIntoPinecone } from "../lib/pinecone";
 import { useRouter } from "next/navigation";  
 
 export default function UploadPDF() {

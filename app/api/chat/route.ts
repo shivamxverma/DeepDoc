@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai"
-import { getContext } from "@/lib/context"
-import { db } from "@/lib/db"
-import { chats, messages, userSystemEnum } from "@/lib/db/schema"
+import { getContext } from "../../../lib/context"
+import { db } from "../../../lib/db"
+import { chats, messages, userSystemEnum } from "../../../lib/db/schema"
 import { eq } from "drizzle-orm"
 import { NextResponse } from "next/server"
 

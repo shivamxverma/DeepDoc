@@ -1,13 +1,13 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/button";
 import { UserButton } from "@clerk/nextjs";
 import {auth } from "@clerk/nextjs/server"
 import Link from "next/link";
 import { ArrowRight, LogIn } from "lucide-react";
-import { db } from "@/lib/db";
-import { chats } from "@/lib/db/schema";
+import { db } from "../lib/db";
+import { chats } from "../lib/db/schema";
 import { eq } from "drizzle-orm";
 import Image from "next/image";
-import UploadPDF from "@/components/PDFUpload";
+import UploadPDF from "../components/PDFUpload";
 
 export default async function Home() {
   const { userId } = await auth();

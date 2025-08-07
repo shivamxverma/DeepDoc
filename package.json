@@ -13,6 +13,7 @@
     "@google/generative-ai": "^0.24.1",
     "@langchain/community": "^0.3.49",
     "@langchain/core": "^0.3.66",
+    "@nanostores/react": "github:ai/react",
     "@neondatabase/serverless": "^1.0.1",
     "@pinecone-database/pinecone": "^6.1.2",
     "@radix-ui/react-scroll-area": "^1.2.9",
@@ -60,7 +61,10 @@
     "typescript": "^5.8.3"
   },
   "eslintConfig": {
-    "extends": ["next", "next/core-web-vitals"],
+    "extends": [
+      "next",
+      "next/core-web-vitals"
+    ],
     "rules": {
       "@next/next/no-img-element": "off",
       "react/no-unescaped-entities": "off"
