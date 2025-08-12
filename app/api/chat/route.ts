@@ -58,7 +58,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const found = await db.select().from(chats).where(eq(chats.id, chatId));
+    const found = await db.select().from(chats).where(eq(chats.id, Number(chatId)));
     if (found.length !== 1) {
       return NextResponse.json({ error: "Chat not found" }, { status: 404 });
     }
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     const fileKey = found[0].fileKey;
 
     await db.insert(messages).values({
-      chatId,
+      chatId: Number(chatId),
       content: lastMessage.content,
       role: userSystemEnum.enumValues[1],
     });
@@ -90,7 +90,7 @@ DeepDoc:
     const aiMessage = await callGeminiWithRetry(prompt);
 
     await db.insert(messages).values({
-      chatId,
+      chatId: Number(chatId),
       content: aiMessage,
       role: userSystemEnum.enumValues[0],
     });
