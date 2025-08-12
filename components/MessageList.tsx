@@ -1,5 +1,5 @@
 import { cn } from "../lib/utils"
-import type { Message } from "ai/react"
+import type { Message } from "ai";
 import { Loader2 } from "lucide-react"
 
 type Props = {
