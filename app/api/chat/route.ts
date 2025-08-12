@@ -1,76 +1,108 @@
-import { GoogleGenerativeAI } from "@google/generative-ai"
-import { getContext } from "../../../lib/context"
-import { db } from "../../../lib/db"
-import { chats, messages, userSystemEnum } from "../../../lib/db/schema"
-import { eq } from "drizzle-orm"
-import { NextResponse } from "next/server"
+import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { db } from "../../../lib/db";
+import { chats, messages, userSystemEnum } from "../../../lib/db/schema";
+import { eq } from "drizzle-orm";
+import { getContext } from "../../../lib/context";
 
-// Initialize the Google Generative AI client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+type ChatMessage = { role: "user" | "system"; content: string };
+
+async function callGeminiWithRetry(prompt: string): Promise<string> {
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  const maxRetries = 5;
+  let delay = 500;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const result = await model.generateContent(
+        { contents: [{ role: "user", parts: [{ text: prompt }] }] },
+        { signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      return result.response.text();
+    } catch (err: any) {
+      clearTimeout(timeout);
+      const status =
+        err?.status || err?.response?.status || (err?.name === "AbortError" ? 408 : undefined);
+      const retriable =
+        status === 503 || status === 500 || status === 429 || status === 408;
+      if (!retriable || attempt === maxRetries) throw err;
+      await new Promise((r) => setTimeout(r, delay + Math.random() * 300));
+      delay *= 2;
+    }
+  }
+  throw new Error("Exhausted retries");
+}
 
 export async function POST(req: Request) {
   try {
-    const { messages: chatMessages, chatId } = await req.json()
+    const { messages: chatMessages, chatId } = (await req.json()) as {
+      messages: ChatMessage[];
+      chatId: string;
+    };
 
-    // console.log("chatMessages:", chatMessages)
-    // Fetch chat details from the database
-    const _chats = await db.select().from(chats).where(eq(chats.id, chatId))
-    if (_chats.length !== 1) {
-      return NextResponse.json({ error: "chat not found" }, { status: 404 })
+    if (!chatId || !Array.isArray(chatMessages) || chatMessages.length === 0) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }
 
-    const fileKey = _chats[0].fileKey
-    const lastMessage = chatMessages[chatMessages.length - 1]
+    const lastMessage = chatMessages[chatMessages.length - 1];
+    if (!lastMessage?.content || lastMessage.role !== "user") {
+      return NextResponse.json(
+        { error: "Last message must be from user with content" },
+        { status: 400 }
+      );
+    }
 
-    // Get context from the file using your custom function
-    const context = await getContext(lastMessage.content, fileKey)
-    // console.log("message :", lastMessage.content , "fileKey : " , fileKey)
-    // console.log("Context:", context)
+    const found = await db.select().from(chats).where(eq(chats.id, chatId));
+    if (found.length !== 1) {
+      return NextResponse.json({ error: "Chat not found" }, { status: 404 });
+    }
 
-    // Construct the prompt for the AI model
-    const prompt = `AI assistant is a brand new, powerful, human-like artificial intelligence.
-      The traits of AI include expert knowledge, helpfulness, cleverness, and articulateness.
-      AI is a well-behaved and well-mannered individual.
-      AI is always friendly, kind, and inspiring, and he is eager to provide vivid and thoughtful responses to the user.
-      AI has the sum of all knowledge in their brain, and is able to accurately answer nearly any question about any topic in conversation.
-      AI assistant is a big fan of Pinecone and Vercel.
-      START CONTEXT BLOCK
-      ${context}
-      END OF CONTEXT BLOCK
-      AI assistant will take into account any CONTEXT BLOCK that is provided in a conversation.
-      If the context does not provide the answer to the question, the AI assistant will say, "I'm sorry, but I don't have enough information to answer that question based on the given context."
-      AI assistant will not apologize for previous responses, but instead will indicate new information was gained.
-      AI assistant will not invent anything that is not drawn directly from the context.
-      
-      User: ${lastMessage.content}
-      AI:`
+    const fileKey = found[0].fileKey;
 
-    // Make the request to Gemini API
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
-    const result = await model.generateContent(prompt)
-    const response = result.response
-    const aiMessage = response.text()
-
-    // console.log("AI Response:", aiMessage)
-    // Save user message into db
     await db.insert(messages).values({
       chatId,
       content: lastMessage.content,
-      role: userSystemEnum.enumValues[1], // "user"
-    })
+      role: userSystemEnum.enumValues[1],
+    });
 
-    // Save AI message into db
+    const context = await getContext(lastMessage.content, fileKey);
+
+    const prompt = `
+You are "DeepDoc", an AI research assistant with deep expertise in technical documentation, code understanding, and problem-solving. 
+Your priorities are: accuracy, clarity, conciseness, and alignment with provided context. 
+Use the CONTEXT BLOCK as your single source of truth. Never fabricate information. 
+If the context lacks the answer, say exactly: "I'm sorry, but I don't have enough information to answer that question based on the given context."
+Always give structured, well-formatted answers (lists, tables, or bullet points when appropriate) and directly address the user's question.
+
+CONTEXT BLOCK:
+${context ?? ""}
+
+User: ${lastMessage.content}
+DeepDoc:
+`.trim();
+
+    const aiMessage = await callGeminiWithRetry(prompt);
+
     await db.insert(messages).values({
       chatId,
       content: aiMessage,
-      role: userSystemEnum.enumValues[0], // "system"
-    })
+      role: userSystemEnum.enumValues[0],
+    });
 
-    // Return the AI response
-    return NextResponse.json({ role: "system", content: aiMessage })
-  } catch (error) {
-    console.error("Error in chat API:", error)
-    return NextResponse.json({ error: "An error occurred" }, { status: 500 })
+    return NextResponse.json({ role: "system", content: aiMessage });
+  } catch (error: any) {
+    const status = error?.status || error?.response?.status || 500;
+    const statusText =
+      error?.statusText || error?.response?.statusText || error?.message || "Internal Server Error";
+    return NextResponse.json(
+      { error: "Upstream model error. Please try again.", status, statusText },
+      { status: status >= 400 && status < 600 ? status : 500 }
+    );
   }
 }
-
