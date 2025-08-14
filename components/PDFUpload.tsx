@@ -18,10 +18,9 @@ export default function UploadPDF() {
   const [uploadedFile, setUploadedFile] = useState<{ text?: string; fileUrl?: string } | null>(null);
   const [Id , setId ] = useState<string | null>(null);
 
-  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB max
-  const ALLOWED_FORMATS = ["application/pdf"]; // Only allow PDFs
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; 
+  const ALLOWED_FORMATS = ["application/pdf"]; 
 
-  // Drag & Drop Handlers
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     setDragActive(true);

@@ -46,7 +46,7 @@ export async function processTextIntoPinecone(
   console.log("Uploading embeddings to Pinecone...");
   await uploadToPinecone(vectors, fileKey);
 
-  // return the first chunk’s content (you can adjust)
+  // return the first chunk’s content
   return docs[0].pageContent;
 }
 

@@ -13,7 +13,6 @@ export default async function Home() {
   const { userId } = await auth();
   const isAuth = !!userId;
 
-  // Get user's first chat if exists
   let firstChat: { id: string } | null = null;
   if (userId) {
     const rows = await db.select().from(chats).where(eq(chats.userId, userId));
@@ -111,7 +110,7 @@ export default async function Home() {
             <div className="absolute -inset-6 -z-10 rounded-3xl bg-gradient-to-br from-indigo-500/20 to-emerald-500/10 blur-2xl" />
             <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
               <Image
-                src="/hero-pdf.png"
+                src="/hero-pdf.jpeg"
                 alt="PDF preview"
                 width={800}
                 height={600}

@@ -21,28 +21,23 @@ interface UploadError {
 export async function uploadPDF(
   pdf: File | null
 ): Promise<UploadSuccess | UploadError> {
-  // 1. Enforce login
   const { userId } = await auth();
   if (!userId) {
     redirect("/sign-in");
   }
 
-  // 2. Validate input
   if (!pdf) {
     return { error: "PDF file is required" };
   }
 
   console.log("Received file for upload:", pdf.name);
 
-  // 3. Read into a Buffer
   const arrayBuffer = await pdf.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
-  // 4. Extract text
   const { default: pdfParse } = await import("pdf-parse");
   const { text: extractedText } = await pdfParse(buffer);
 
-  // 5. Upload the raw PDF to Vercel Blob under a unique key
   const timestamp = Date.now();
   const fileKey = `${pdf.name}-${timestamp}.pdf`;
 
@@ -54,11 +49,9 @@ export async function uploadPDF(
 
   if (extractedText) {
     try {
-      // 6. Send chunks → embeddings → Pinecone
       await processTextIntoPinecone(extractedText, fileKey);
       console.log("Embeddings uploaded successfully!");
 
-      // 7. Record the chat in your database
       const [inserted] = await db
         .insert(chats)
         .values({
@@ -76,7 +69,6 @@ export async function uploadPDF(
     }
   }
 
-  // 8. Return a clear, typed response
   return {
     message: "File uploaded and processed successfully",
     chatId,
