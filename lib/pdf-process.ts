@@ -1,11 +1,14 @@
 "use server";
 
+import md5 from "md5";
+import { PineconeRecord } from "@pinecone-database/pinecone";
 import { put } from "@vercel/blob";
-import { processTextIntoPinecone } from "./pinecone";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { db } from "./db";
 import { chats } from "./db/schema";
+import { uploadToPinecone } from "./pineconedb";
+import { processText } from "./chunking";
 
 interface UploadSuccess {
   message: string;
@@ -18,9 +21,11 @@ interface UploadError {
   error: string;
 }
 
-export async function uploadPDF(
-  pdf: File | null
-): Promise<UploadSuccess | UploadError> {
+function isZeroVector(vector: number[]): boolean {
+  return vector.every((v) => v === 0);
+}
+
+export async function uploadPDF(pdf: File | null): Promise<UploadSuccess | UploadError> {
   const { userId } = await auth();
   if (!userId) {
     redirect("/sign-in");
@@ -29,8 +34,6 @@ export async function uploadPDF(
   if (!pdf) {
     return { error: "PDF file is required" };
   }
-
-  console.log("Received file for upload:", pdf.name);
 
   const arrayBuffer = await pdf.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
@@ -43,28 +46,59 @@ export async function uploadPDF(
 
   const blob = await put(fileKey, buffer, {
     access: "public",
+    contentType: "application/pdf",
   });
 
   let chatId: number | null = null;
 
+  const [inserted] = await db
+    .insert(chats)
+    .values({
+      fileKey,
+      pdfName: pdf.name,
+      pdfUrl: blob.url,
+      userId,
+    })
+    .returning({ id: chats.id });
+
+  chatId = inserted.id;
+
   if (extractedText) {
     try {
-      await processTextIntoPinecone(extractedText, fileKey);
-      console.log("Embeddings uploaded successfully!");
+      const { chunks, embeddings } = await processText(extractedText, {
+        bufferSize: 1,
+        mergeLengthThreshold: 300,
+        cosineSimThreshold: 0.8,
+        percentileThreshold: 90,
+        maxSentencesPerBatch: 500,
+      });
 
-      const [inserted] = await db
-        .insert(chats)
-        .values({
-          fileKey,
-          pdfName: pdf.name,
-          pdfUrl: blob.url,
-          userId,
-        })
-        .returning({ id: chats.id });
+      const validVectors: PineconeRecord[] = [];
+      for (let index = 0; index < chunks.length; index++) {
+        const embedding = embeddings[index];
+        if (embedding && !isZeroVector(embedding)) {
+          validVectors.push({
+            id: md5(chunks[index].text),
+            values: embedding,
+            metadata: {
+              text: chunks[index].text,
+              startIndex: chunks[index].metadata.startIndex,
+              endIndex: chunks[index].metadata.endIndex,
+              title: "PDF Document",
+              description: "PDF document",
+              timestamp: new Date().toISOString(),
+              chatId,
+              userId,
+              fileKey,
+            },
+          });
+        }
+      }
 
-      chatId = inserted.id;
+      if (validVectors.length > 0) {
+        await uploadToPinecone(validVectors, fileKey);
+      }
     } catch (err) {
-      console.error("Error processing text or saving chat:", err);
       return { error: "Failed to process PDF text or save record." };
     }
   }

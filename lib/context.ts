@@ -1,5 +1,5 @@
 import { Pinecone } from "@pinecone-database/pinecone";
-import { generateEmbedding } from "./pinecone";
+import { generateEmbedding } from "./embedding";
 
 export interface MatchMetadata {
   text: string;
