@@ -3,8 +3,6 @@
 import md5 from "md5";
 import { PineconeRecord } from "@pinecone-database/pinecone";
 import { put } from "@vercel/blob";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { db } from "./db";
 import { chats } from "./db/schema";
 import { uploadToPinecone } from "./pineconedb";
@@ -26,11 +24,6 @@ function isZeroVector(vector: number[]): boolean {
 }
 
 export async function uploadPDF(pdf: File | null): Promise<UploadSuccess | UploadError> {
-  const { userId } = await auth();
-  if (!userId) {
-    redirect("/sign-in");
-  }
-
   if (!pdf) {
     return { error: "PDF file is required" };
   }
@@ -57,7 +50,6 @@ export async function uploadPDF(pdf: File | null): Promise<UploadSuccess | Uploa
       fileKey,
       pdfName: pdf.name,
       pdfUrl: blob.url,
-      userId,
     })
     .returning({ id: chats.id });
 
@@ -88,7 +80,6 @@ export async function uploadPDF(pdf: File | null): Promise<UploadSuccess | Uploa
               description: "PDF document",
               timestamp: new Date().toISOString(),
               chatId,
-              userId,
               fileKey,
             },
           });
