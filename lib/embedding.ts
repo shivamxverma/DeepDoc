@@ -41,8 +41,12 @@ export async function generateEmbedding(text: string, retries = 3, timeoutMs = 1
   throw new Error("Unexpected");
 }
 
-export async function generateEmbeddings(texts: string[], batchSize = 10): Promise<number[][]> {
-  const out: number[][] = [];
+/** One entry per input text; `undefined` when that text failed to embed (keeps indices aligned). */
+export async function generateEmbeddings(
+  texts: string[],
+  batchSize = 10
+): Promise<(number[] | undefined)[]> {
+  const out: (number[] | undefined)[] = [];
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
     const batchEmbeddings = await Promise.all(
@@ -50,11 +54,11 @@ export async function generateEmbeddings(texts: string[], batchSize = 10): Promi
         try {
           return await generateEmbedding(t);
         } catch {
-          return null;
+          return undefined;
         }
       })
     );
-    out.push(...batchEmbeddings.filter((e): e is number[] => Array.isArray(e)));
+    out.push(...batchEmbeddings);
   }
   return out;
 }

@@ -78,7 +78,9 @@ export default function UploadPDF() {
           router.push(`/chat/${id}`);
       }
     } catch (err) {
-      setError("Upload failed. Please try again.");
+      const message = err instanceof Error ? err.message : "Upload failed. Please try again.";
+      setError(message);
+      toast.error(message);
     } finally {
       setUploading(false);
     }

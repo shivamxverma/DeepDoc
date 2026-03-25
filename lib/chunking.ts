@@ -52,9 +52,6 @@ export async function attachEmbeddings(sentences: SentenceObject[], batchSize: n
     const texts = batch.map((s) => s.combined_sentence);
     try {
       const embeddings = await generateEmbeddings(texts);
-      if (embeddings.length !== batch.length) {
-        throw new Error(`Embedding length mismatch: expected ${batch.length}, got ${embeddings.length}`);
-      }
       result.push(...batch.map((s, j) => ({ ...s, embedding: embeddings[j] })));
     } catch {
       result.push(...batch.map((s) => ({ ...s, embedding: undefined })));
@@ -159,8 +156,11 @@ export async function processText(
     maxSentencesPerBatch: 100,
     maxChunkLength: 500,
   }
-): Promise<{ chunks: ChunkWithMetadata[]; embeddings: number[][] }> {
-  const sentences = splitToSentences(text);
+): Promise<{ chunks: ChunkWithMetadata[]; embeddings: (number[] | undefined)[] }> {
+  let sentences = splitToSentences(text);
+  if (sentences.length === 0 && text.trim().length > 0) {
+    sentences = [text.trim()];
+  }
   if (sentences.length === 0) {
     throw new Error("No sentences found in the input text");
   }
@@ -173,7 +173,7 @@ export async function processText(
   }
 
   const allChunks: ChunkWithMetadata[] = [];
-  const allEmbeddings: number[][] = [];
+  const allEmbeddings: (number[] | undefined)[] = [];
 
   for (let i = 0; i < batches.length; i++) {
     const embedded = await attachEmbeddings(batches[i]);
@@ -184,9 +184,6 @@ export async function processText(
     allChunks.push(...merged);
 
     const emb = await generateEmbeddings(merged.map((c) => c.text));
-    if (emb.length !== merged.length) {
-      throw new Error(`Embedding length mismatch: expected ${merged.length}, got ${emb.length}`);
-    }
     allEmbeddings.push(...emb);
   }
 

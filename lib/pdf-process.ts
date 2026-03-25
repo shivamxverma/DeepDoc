@@ -90,7 +90,8 @@ export async function uploadPDF(pdf: File | null): Promise<UploadSuccess | Uploa
         await uploadToPinecone(validVectors, fileKey);
       }
     } catch (err) {
-      return { error: "Failed to process PDF text or save record." };
+      const detail = err instanceof Error ? err.message : String(err);
+      return { error: `Failed to process PDF text or save record: ${detail}` };
     }
   }
 
