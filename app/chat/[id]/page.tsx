@@ -13,11 +13,9 @@ const ChatPage = async ({ params }: { params: Params }) => {
   const { id } = await params
 
   const _chats = await db.select().from(chats)
-  if (!_chats) {
-    return redirect("/")
-  }
+  if (_chats.length === 0) nextRedirect("/")
   if (!_chats.find((chat) => chat.id === Number(id))) {
-    return redirect("/")
+    nextRedirect("/")
   }
   const currentChat = await db
     .select()
@@ -47,7 +45,4 @@ const ChatPage = async ({ params }: { params: Params }) => {
   )
 }
 
-export default ChatPage;
-function redirect(url: string) {
-  nextRedirect(url)
-}
+export default ChatPage
