@@ -2,6 +2,7 @@ import { db } from "../../../lib/db";
 import { messages } from "../../../lib/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { sanitizeServerError } from "../../../lib/error";
 
 interface RequestBody {
   chatId: number;
@@ -19,6 +20,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json(_messages);
   } catch (error) {
-    return NextResponse.json({ error: "An error occurred while fetching messages" }, { status: 500 });
+    return NextResponse.json({ error: sanitizeServerError(error) }, { status: 500 });
   }
 }
