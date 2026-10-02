@@ -1,8 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { azureClient } from "./azure";
 import { config } from "./config";
-
-const genAI = new GoogleGenerativeAI(config.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "text-embedding-004" });
 
 const embeddingCache = new Map<string, number[]>();
 const MAX_PAYLOAD_SIZE = 9000;
@@ -28,7 +25,12 @@ export async function generateEmbedding(text: string, retries = 3, timeoutMs = 1
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Embedding timeout")), timeoutMs));
-      const embeddingPromise = model.embedContent(truncatedText).then((r) => r.embedding.values as number[]);
+      const embeddingPromise = azureClient.embeddings
+        .create({
+          model: config.AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME,
+          input: truncatedText,
+        })
+        .then((res) => res.data[0].embedding);
       const embedding = await Promise.race([embeddingPromise, timeoutPromise]);
       if (isZeroVector(embedding)) throw new Error("All-zero embedding");
       embeddingCache.set(text, embedding);
