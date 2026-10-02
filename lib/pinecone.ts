@@ -1,8 +1,8 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { Pinecone } from "@pinecone-database/pinecone";
 import dotenv from 'dotenv';
 import md5 from 'md5';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { generateEmbedding } from './embedding';
 dotenv.config();
 
 /** 
@@ -28,10 +28,6 @@ interface PineconeVector {
 
 export const getPineconeClient = () =>
   new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
-
-const googleai = new GoogleGenerativeAI(
-  process.env.GEMINI_API_KEY!
-).getGenerativeModel({ model: "text-embedding-004" });
 
 export async function processTextIntoPinecone(
   text: string,
@@ -76,10 +72,7 @@ async function generateEmbeddings(
   );
 }
 
-export async function generateEmbedding(text: string): Promise<number[]> {
-  const result = await googleai.embedContent(text);
-  return result.embedding.values;
-}
+
 
 async function uploadToPinecone(
   vectors: PineconeVector[],
