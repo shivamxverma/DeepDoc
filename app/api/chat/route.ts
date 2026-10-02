@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { db } from "../../../lib/db";
 import { chats, messages, userSystemEnum } from "../../../lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getContext } from "../../../lib/context";
+import { config } from "../../../lib/config";
+import { azureClient } from "../../../lib/azure";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+import { sanitizeServerError } from "../../../lib/error";
 
 type ChatMessage = { role: "user" | "system"; content: string };
 
-async function callGeminiWithRetry(prompt: string): Promise<string> {
-  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+async function callAzureOpenAIWithRetry(prompt: string): Promise<string> {
   const maxRetries = 5;
   let delay = 500;
 
@@ -19,12 +19,15 @@ async function callGeminiWithRetry(prompt: string): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
     try {
-      const result = await model.generateContent(
-        { contents: [{ role: "user", parts: [{ text: prompt }] }] },
+      const response = await azureClient.chat.completions.create(
+        {
+          model: config.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME,
+          messages: [{ role: "user", content: prompt }],
+        },
         { signal: controller.signal }
       );
       clearTimeout(timeout);
-      return result.response.text();
+      return response.choices[0]?.message?.content || "";
     } catch (err: any) {
       clearTimeout(timeout);
       const status =
@@ -94,7 +97,7 @@ User: ${lastMessage.content}
 DeepDoc:
 `.trim();
 
-    const aiMessage = await callGeminiWithRetry(prompt);
+    const aiMessage = await callAzureOpenAIWithRetry(prompt);
 
     await db.insert(messages).values({
       chatId: Number(chatId),
@@ -104,11 +107,10 @@ DeepDoc:
 
     return NextResponse.json({ role: "system", content: aiMessage });
   } catch (error: any) {
+    const userMessage = sanitizeServerError(error);
     const status = error?.status || error?.response?.status || 500;
-    const statusText =
-      error?.statusText || error?.response?.statusText || error?.message || "Internal Server Error";
     return NextResponse.json(
-      { error: "Upstream model error. Please try again.", status, statusText },
+      { error: userMessage },
       { status: status >= 400 && status < 600 ? status : 500 }
     );
   }
