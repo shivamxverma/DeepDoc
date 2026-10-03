@@ -3,62 +3,19 @@ import { db } from "../../../lib/db";
 import { chats, messages, userSystemEnum } from "../../../lib/db/schema";
 import { eq } from "drizzle-orm";
 import { getContext } from "../../../lib/context";
-import { config } from "../../../lib/config";
-import { azureClient } from "../../../lib/azure";
+import { callChatModel, rewriteQuestion } from "../../../lib/chat";
+import { loadHistory } from "../../../lib/history";
+import { buildChatMessages } from "../../../lib/prompt";
 
 import { sanitizeServerError } from "../../../lib/error";
 
-type ChatMessage = { role: "user" | "system"; content: string };
-
-
-async function callAzureOpenAIWithRetry(prompt: string): Promise<string> {
-  const maxRetries = 5;
-  let delay = 500;
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
-    try {
-      const response = await azureClient.chat.completions.create(
-        {
-          model: config.AZURE_OPENAI_CHAT_DEPLOYMENT_NAME,
-          messages: [{ role: "user", content: prompt }],
-        },
-        { signal: controller.signal }
-      );
-      clearTimeout(timeout);
-      return response.choices[0]?.message?.content || "";
-    } catch (err: any) {
-      clearTimeout(timeout);
-      const status =
-        err?.status || err?.response?.status || (err?.name === "AbortError" ? 408 : undefined);
-      const retriable =
-        status === 503 || status === 500 || status === 429 || status === 408;
-      if (!retriable || attempt === maxRetries) throw err;
-      await new Promise((r) => setTimeout(r, delay + Math.random() * 300));
-      delay *= 2;
-    }
-  }
-  throw new Error("Exhausted retries");
-}
-
 export async function POST(req: Request) {
   try {
-    const { messages: chatMessages, chatId } = (await req.json()) as {
-      messages: ChatMessage[];
-      chatId: string;
-    };
+    // History comes from the DB, never from the client, so it can't be forged.
+    const { message, chatId } = (await req.json()) as { message: string; chatId: number | string };
 
-    if (!chatId || !Array.isArray(chatMessages) || chatMessages.length === 0) {
+    if (!chatId || typeof message !== "string" || !message.trim()) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-    }
-
-    const lastMessage = chatMessages[chatMessages.length - 1];
-    if (!lastMessage?.content || lastMessage.role !== "user") {
-      return NextResponse.json(
-        { error: "Last message must be from user with content" },
-        { status: 400 }
-      );
     }
 
     const found = await db.select().from(chats).where(eq(chats.id, Number(chatId)));
@@ -68,36 +25,21 @@ export async function POST(req: Request) {
 
     const fileKey = found[0].fileKey;
 
+    // Load history before saving the new message so it isn't duplicated in the prompt.
+    const history = await loadHistory(Number(chatId));
+
     await db.insert(messages).values({
       chatId: Number(chatId),
-      content: lastMessage.content,
+      content: message,
       role: userSystemEnum.enumValues[1],
     });
 
-    const context = await getContext(lastMessage.content, fileKey);
+    const searchQuery = await rewriteQuestion(history, message);
+    const context = await getContext(searchQuery, fileKey);
 
-    const prompt = `
-You are DeepDoc, an assistant focused on the user's uploaded material. Your job is to give accurate, useful answers strictly grounded in the CONTEXT BLOCK below.
+    const promptMessages = buildChatMessages(context ?? "", message, history);
 
-## Grounding
-- Use only the CONTEXT BLOCK for factual claims, definitions, numbers, names, dates, quotes, and code. Do not rely on outside knowledge to fill gaps.
-- If the context is empty, off-topic, or insufficient to answer the question, respond with exactly this sentence and nothing else: "I'm sorry, but I don't have enough information to answer that question based on the given context."
-- If the context supports only part of the question, answer that part clearly and briefly state what the provided material does not cover (without inventing details).
-
-## Answers
-- Lead with a direct answer, then add structure only when it helps: short paragraphs, bullets for lists, numbered steps for procedures, tables for comparisons.
-- For code or technical excerpts taken from the context, use fenced code blocks and preserve identifiers and syntax faithfully.
-- Be concise by default; expand only when the question asks for explanation, walkthroughs, or edge cases that the context actually supports.
-- Write in a neutral, professional tone. Avoid meta phrases like "according to the context" unless you are stating a limitation.
-
-CONTEXT BLOCK:
-${context ?? ""}
-
-User: ${lastMessage.content}
-DeepDoc:
-`.trim();
-
-    const aiMessage = await callAzureOpenAIWithRetry(prompt);
+    const aiMessage = await callChatModel(promptMessages);
 
     await db.insert(messages).values({
       chatId: Number(chatId),

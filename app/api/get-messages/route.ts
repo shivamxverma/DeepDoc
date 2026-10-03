@@ -1,6 +1,6 @@
 import { db } from "../../../lib/db";
 import { messages } from "../../../lib/db/schema";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { sanitizeServerError } from "../../../lib/error";
 
@@ -16,7 +16,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid or missing chatId" }, { status: 400 });
     }
 
-    const _messages = await db.select().from(messages).where(eq(messages.chatId, chatId));
+    const _messages = await db
+      .select()
+      .from(messages)
+      .where(eq(messages.chatId, chatId))
+      .orderBy(asc(messages.id));
 
     return NextResponse.json(_messages);
   } catch (error) {
