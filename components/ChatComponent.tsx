@@ -32,10 +32,7 @@ const ChatComponent = ({ chatId, pdfName }: Props) => {
 
   const mutation = useMutation({
     mutationFn: async (message: string) => {
-      const response = await axios.post("/api/chat", {
-        messages: [...(messages || []), { role: "user", content: message }],
-        chatId,
-      })
+      const response = await axios.post("/api/chat", { chatId, message })
       return response.data
     },
     onSuccess: (data) => {

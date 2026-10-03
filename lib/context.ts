@@ -99,12 +99,11 @@ export async function getMatchesFromEmbeddings(
       .map((match) => ({
         id: match.id,
         score: match.score as number,
-        metadata:
-          match.metadata &&
-          typeof match.metadata.text === "string" &&
-          typeof match.metadata.pageNumber === "number"
-            ? (match.metadata as unknown as MatchMetadata)
-            : { text: "", pageNumber: 0 },
+        metadata: {
+          text: typeof match.metadata?.text === "string" ? match.metadata.text : "",
+          pageNumber:
+            typeof match.metadata?.pageNumber === "number" ? match.metadata.pageNumber : 0,
+        },
       }));
   } catch (error) {
     console.error("Error querying embeddings:", error);
@@ -112,20 +111,56 @@ export async function getMatchesFromEmbeddings(
   }
 }
 
-function readEnvNumber(key: string, fallback: number): number {
+export function readEnvNumber(key: string, fallback: number): number {
   const raw = process.env[key];
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-export async function getContext(query: string, fileKey: string): Promise<string> {
-  const topK = readEnvNumber("CONTEXT_TOP_K", 20);
-  const scoreThreshold = readEnvNumber("CONTEXT_SCORE_THRESHOLD", 0.7);
-  const maxTokens = readEnvNumber("CONTEXT_MAX_TOKENS", 750);
+export interface ContextOptions {
+  topK: number;
+  scoreThreshold: number;
+  maxTokens: number;
+  fallbackK: number;
+}
 
+export interface SelectedContext {
+  text: string;
+  chunks: Array<{ id: string; score: number; metadata: MatchMetadata }>;
+  usedFallback: boolean;
+}
+
+export function getContextOptions(): ContextOptions {
+  return {
+    topK: readEnvNumber("CONTEXT_TOP_K", 20),
+    scoreThreshold: readEnvNumber("CONTEXT_SCORE_THRESHOLD", 0.3),
+    maxTokens: readEnvNumber("CONTEXT_MAX_TOKENS", 750),
+    fallbackK: readEnvNumber("CONTEXT_FALLBACK_K", 5),
+  };
+}
+
+/** Pure selection step: rank-ordered matches in, packed context out. Matches may exceed topK. */
+export function selectContext(
+  matches: Array<{ id: string; score: number; metadata: MatchMetadata }>,
+  opts: ContextOptions
+): SelectedContext {
+  const top = [...matches].sort((a, b) => b.score - a.score).slice(0, opts.topK);
+  let chunks = dedupeRankedMatches(top, opts.scoreThreshold);
+  let usedFallback = false;
+  // Short or broad queries ("summary", "what is this about?") score low against every chunk;
+  // fall back to the best few matches and let the prompt's grounding rules handle relevance.
+  if (chunks.length === 0) {
+    chunks = dedupeRankedMatches(top, 0).slice(0, opts.fallbackK);
+    usedFallback = true;
+  }
+  const text = packIntoTokenBudget(chunks.map((m) => ({ text: m.metadata.text })), opts.maxTokens);
+  return { text, chunks, usedFallback };
+}
+
+export async function getContext(query: string, fileKey: string): Promise<string> {
+  const opts = getContextOptions();
   const queryEmbeddings = await generateEmbedding(query);
-  const matches = await getMatchesFromEmbeddings(queryEmbeddings, fileKey, topK);
-  const uniqueRanked = dedupeRankedMatches(matches, scoreThreshold);
-  return packIntoTokenBudget(uniqueRanked.map((m) => ({ text: m.metadata.text })), maxTokens);
+  const matches = await getMatchesFromEmbeddings(queryEmbeddings, fileKey, opts.topK);
+  return selectContext(matches, opts).text;
 }

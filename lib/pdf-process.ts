@@ -78,6 +78,7 @@ export async function uploadPDF(pdf: File | null): Promise<UploadSuccess | Uploa
                 text: chunks[index].text,
                 startIndex: chunks[index].metadata.startIndex,
                 endIndex: chunks[index].metadata.endIndex,
+                section: chunks[index].metadata.section,
                 title: "PDF Document",
                 description: "PDF document",
                 timestamp: new Date().toISOString(),
