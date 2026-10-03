@@ -1,10 +1,11 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import Providers from "../components/Provider";
 import { Toaster } from "react-hot-toast";
 
-const inter = Inter({ subsets: ["latin"] });
+const geistSans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
+const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
   title: "DeepDoc - Chat with any PDF",
@@ -16,12 +17,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-        <body className={inter.className}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+        <body>
           <Providers>
             {children}
           </Providers>
-          <Toaster />
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              className: "glass !rounded-lg !text-sm !text-slate-800",
+              style: { boxShadow: "none" },
+            }}
+          />
         </body>
     </html>
   );

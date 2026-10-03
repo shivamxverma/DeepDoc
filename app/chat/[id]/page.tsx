@@ -1,10 +1,11 @@
 import ChatComponent from "../../../components/ChatComponent"
 import ChatSideBar from "../../../components/ChatSideBar"
 import PDFViewer from "../../../components/PDFViewer"
+import Backdrop from "../../../components/Backdrop"
 import { db } from "../../../lib/db"
 import { chats } from "../../../lib/db/schema"
 import { eq } from "drizzle-orm"
-import { ScrollArea } from "../../../components/ui/scroll-area"
+import { FileText } from "lucide-react"
 import { redirect as nextRedirect } from "next/navigation"
 
 type Params = Promise<{ id: string }>
@@ -22,24 +23,29 @@ const ChatPage = async ({ params }: { params: Params }) => {
     .from(chats)
     .where(eq(chats.id, Number(id)))
 
+  const pdfName = currentChat[0]?.pdfName || "Document"
+
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-white">
-      <div className="flex w-full h-screen overflow-hidden">
-        <div className="flex-[1] max-w-xs bg-gray-800 border-r border-gray-700 transition-all duration-300 ease-in-out hover:max-w-sm">
-          <ScrollArea className="h-full">
-            <ChatSideBar chats={_chats} chatId={Number.parseInt(id)} />
-          </ScrollArea>
-        </div>
-        <div className="flex-[5] p-4 bg-gray-900">
-          <div className="h-full rounded-lg overflow-hidden shadow-lg transition-all duration-300 ease-in-out hover:shadow-2xl">
+    <div className="relative h-screen overflow-hidden text-slate-900">
+      <Backdrop />
+      <div className="flex h-full gap-3 p-3">
+        <aside className="glass hidden w-64 shrink-0 overflow-hidden rounded-xl md:block">
+          <ChatSideBar chats={_chats} chatId={Number.parseInt(id)} />
+        </aside>
+
+        <section className="glass hidden min-w-0 flex-[5] flex-col overflow-hidden rounded-xl lg:flex">
+          <div className="hairline flex h-12 shrink-0 items-center gap-2 border-b px-4">
+            <FileText className="size-4 text-slate-400" />
+            <span className="truncate text-sm font-medium text-slate-700">{pdfName}</span>
+          </div>
+          <div className="min-h-0 flex-1 bg-white">
             <PDFViewer pdf_url={currentChat[0]?.pdfUrl || ""} />
           </div>
-        </div>
-        <div className="flex-[3] border-l border-gray-700 bg-gray-800">
-          <ScrollArea className="h-full">
-            <ChatComponent chatId={Number.parseInt(id)} />
-          </ScrollArea>
-        </div>
+        </section>
+
+        <section className="glass flex min-w-0 flex-[3] flex-col overflow-hidden rounded-xl">
+          <ChatComponent chatId={Number.parseInt(id)} pdfName={pdfName} />
+        </section>
       </div>
     </div>
   )
