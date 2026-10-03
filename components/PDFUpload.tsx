@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
 import toast from "react-hot-toast";
 import { uploadPDF } from "../lib/pdf-process";
-import { useRouter } from "next/navigation";  
+import { useRouter } from "next/navigation";
+import { UploadCloud, X } from "lucide-react";
 
 export default function UploadPDF() {
-  const router = useRouter(); 
+  const router = useRouter();
   const inputFileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState<boolean>(false);
@@ -15,10 +16,16 @@ export default function UploadPDF() {
   const [uploading, setUploading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<{ text?: string; fileUrl?: string } | null>(null);
-  const [Id , setId ] = useState<string | null>(null);
+  const [Id, setId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
 
-  const MAX_FILE_SIZE = 4 * 1024 * 1024; 
-  const ALLOWED_FORMATS = ["application/pdf"]; 
+  // Increase max to 10MB to match the landing page copy
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
+  const ALLOWED_FORMATS = ["application/pdf"];
+
+  useEffect(() => {
+    if (!uploading) setProgress(0);
+  }, [uploading]);
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -38,11 +45,19 @@ export default function UploadPDF() {
     }
   };
 
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
   const handleFileChange = async (selectedFile: File | null) => {
     if (!selectedFile) return;
 
     if (selectedFile.size > MAX_FILE_SIZE) {
-      toast.error("File size exceeds 4MB limit.");
+      toast.error(`File size exceeds ${formatBytes(MAX_FILE_SIZE)} limit.`);
       return;
     }
     if (!ALLOWED_FORMATS.includes(selectedFile.type)) {
@@ -53,14 +68,30 @@ export default function UploadPDF() {
     setFile(selectedFile);
     setFileName(selectedFile.name);
     setError(null);
-    // await handleUpload(selectedFile);
+  };
+
+  const handleRemove = () => {
+    setFile(null);
+    setFileName(null);
+    setError(null);
   };
 
   const handleUpload = async (selectedFile: File) => {
+    let progressInterval: number | undefined;
     try {
       setUploading(true);
+      setProgress(6);
+
+      // simulate progress until server responds
+      progressInterval = window.setInterval(() => {
+        setProgress((p) => Math.min(90, p + Math.random() * 8));
+      }, 400) as unknown as number;
+
       const response = await uploadPDF(selectedFile);
-      console.log("Response from uploadPDF:", response);
+
+      if (progressInterval) clearInterval(progressInterval);
+      setProgress(100);
+
       if ("error" in response) {
         throw new Error(response.error);
       }
@@ -71,82 +102,98 @@ export default function UploadPDF() {
       setError(null);
       toast.success("File uploaded successfully");
       const id = response.chatId;
-      // console.log("id[0] is here " , id[0]);
-      // console.log("id only : " ,[id] ) 
       setId(id ? id.toString() : null);
-      if (id) {
-          router.push(`/chat/${id}`);
-      }
+      // small delay so users can see the completed progress
+      setTimeout(() => {
+        if (id) router.push(`/chat/${id}`);
+      }, 500);
     } catch (err) {
+      if (progressInterval) clearInterval(progressInterval);
       const message = err instanceof Error ? err.message : "Upload failed. Please try again.";
       setError(message);
       toast.error(message);
+      setProgress(0);
     } finally {
       setUploading(false);
     }
   };
 
   return (
-    <div className="flex flex-col items-center w-full max-w-md">
-      {/* Drop Zone */}
+    <div className="w-full">
       <div
-        className={`flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200
-        ${dragActive ? "border-blue-600 bg-blue-100" : "border-gray-300"}`}
+        role="button"
+        tabIndex={0}
         onClick={() => inputFileRef.current?.click()}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') inputFileRef.current?.click(); }}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border border-dashed px-6 py-10 transition-colors duration-150
+          ${dragActive ? 'border-indigo-500/60 bg-indigo-50/70' : 'border-slate-300 bg-white/50 hover:border-slate-400 hover:bg-white/70'}`}
       >
-        <p className="text-gray-600">
-          {dragActive ? "Drop the file here..." : "Drag & Drop your file here or Click to upload"}
-        </p>
-        <Button type="button" className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200">
-          Select File
-        </Button>
+        <span className={`flex size-10 items-center justify-center rounded-md border bg-white shadow-[0_1px_2px_rgb(15_23_42/0.05)] ${dragActive ? 'border-indigo-500/30' : 'border-slate-900/[.08]'}`}>
+          <UploadCloud className={`size-5 ${dragActive ? 'text-indigo-600' : 'text-slate-500'}`} />
+        </span>
+        <div className="text-center">
+          <p className="text-sm font-medium text-slate-800">
+            {dragActive ? 'Drop the PDF here' : <>Drag & drop a PDF, or <span className="text-indigo-600">browse</span></>}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">Max {formatBytes(MAX_FILE_SIZE)} · PDF only · Files removed after session</p>
+        </div>
+        <input
+          ref={inputFileRef}
+          type="file"
+          accept="application/pdf"
+          className="hidden"
+          onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
+        />
       </div>
 
-      {/* Hidden Input Field */}
-      <input
-        ref={inputFileRef}
-        type="file"
-        accept="application/pdf"
-        className="hidden"
-        onChange={(e) => handleFileChange(e.target.files?.[0] || null)}
-      />
+      {file && (
+        <div className="glass mt-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2.5">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-red-500/15 bg-red-50 text-[10px] font-semibold text-red-600">
+              PDF
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-slate-800">{file.name}</p>
+              <p className="text-xs text-slate-500">{formatBytes(file.size)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button size="sm" type="button" disabled={uploading} onClick={() => file && handleUpload(file)}>
+              {uploading ? 'Uploading…' : 'Upload'}
+            </Button>
+            <Button size="icon" variant="ghost" type="button" aria-label="Remove file" disabled={uploading} onClick={handleRemove} className="size-8">
+              <X />
+            </Button>
+          </div>
+        </div>
+      )}
 
-      {/* Selected File Name */}
-      {fileName && <p className="text-gray-700 text-sm mt-2">Selected: {fileName}</p>}
+      {uploading && (
+        <div className="mt-3 flex items-center gap-3">
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-slate-900/[.06]">
+            <div className="h-full rounded-full bg-indigo-600 transition-[width] duration-300" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="w-9 text-right text-xs tabular-nums text-slate-500">{Math.round(progress)}%</span>
+        </div>
+      )}
 
-      {/* Error Message */}
-      {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+      {error && (
+        <p className="mt-3 rounded-md border border-red-500/15 bg-red-50/80 px-3 py-2 text-sm text-red-700">{error}</p>
+      )}
 
-      {/* Upload Button */}
-      <Button
-        type="button"
-        disabled={uploading}
-        className={`w-full mt-4 px-4 py-2 text-white rounded-lg transition duration-200 ${
-          uploading ? "bg-gray-500 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"
-        }`}
-        onClick={() => file && handleUpload(file)}
-      >
-        {uploading ? "Uploading..." : "Upload"}
-      </Button>
-
-      {/* Uploaded File Info */}
       {uploadedFile && (
-        <div className="mt-4 text-center">
-          <p className="text-gray-700">File uploaded successfully!</p>
+        <div className="mt-3 rounded-lg border border-emerald-500/20 bg-emerald-50/70 p-3 text-sm text-emerald-900">
+          <p className="font-medium">File uploaded, opening chat…</p>
           {uploadedFile.fileUrl && (
-            <a href={uploadedFile.fileUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
-              View File
+            <a href={uploadedFile.fileUrl} target="_blank" rel="noreferrer" className="text-indigo-600 underline-offset-4 hover:underline">
+              View file
             </a>
           )}
           {uploadedFile.text && (
-            <div className="mt-2 p-2 border border-gray-300 rounded-md max-h-40 overflow-auto text-sm text-gray-700">
-              <strong>Extracted Text:</strong> {uploadedFile.text}
-              {/* <strong>Extracted link:</strong> {Id} */}
-
-            </div>
+            <div className="mt-2 max-h-36 overflow-auto text-xs text-slate-600">{uploadedFile.text.slice(0, 800)}{uploadedFile.text.length > 800 ? '…' : ''}</div>
           )}
         </div>
       )}
